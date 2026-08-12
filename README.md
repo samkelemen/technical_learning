@@ -1,3 +1,3 @@
-# technical_learning_sam
+# syntax_db
 
-This repo contains learnings about anything programming related as well as useful commands, programming patterns, etc. as a repository to go to remember syntax.
+This new repo contains useful commands, programming patterns, etc. as a repository to go to remember syntax when I can't remember something I know how to do.
