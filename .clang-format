@@ -1,0 +1,23 @@
+BasedOnStyle: Google
+
+IndentWidth: 4
+ContinuationIndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackParameters: false
+
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+
+PointerAlignment: Left
+AlignAfterOpenBracket: DontAlign
+AlignOperands: false
+
+# Keep include groups as written (sorted within each group): the tests put
+# Catch2 in a group of its own, ahead of the standard headers.
+IncludeBlocks: Preserve
+
