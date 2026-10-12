@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cstddef>
 #include <iostream>
+#include <new>
 #include <optional>
 #include <random>
 #include <ranges>
@@ -15,17 +16,18 @@ template <typename T, std::size_t bufferSize>
 class SpscRingBuffer {
    private:
     std::array<std::optional<T>, bufferSize> buffer;
-    std::atomic<std::size_t> readNumber;
-    std::atomic<std::size_t>
-        writeNumber;  // read and writeNumber need to be on different cachee lines
-    const std::size_t bufferIndexBitMask = bufferSize - 1;
+    static constexpr std::size_t bufferIndexBitMask = bufferSize - 1;
+
+    static constexpr std::size_t cacheLineSize = std::hardware_destructive_interference_size;
+    alignas(cacheLineSize) std::atomic<std::size_t> readCount{0};
+    alignas(cacheLineSize) std::atomic<std::size_t> writeCount{0};
 
    public:
     SpscRingBuffer() = default;
 
     bool push(const T& value) {
-        std::size_t currentWriteNumber = writeNumber.load(std::memory_order_relaxed);
-        std::size_t currentReadNumber = readNumber.load(std::memory_order_acquire);
+        std::size_t currentWriteNumber = writeCount.load(std::memory_order_relaxed);
+        std::size_t currentReadNumber = readCount.load(std::memory_order_acquire);
 
         // Check if buffer is full
         if (currentWriteNumber - currentReadNumber == bufferSize) {
@@ -33,42 +35,41 @@ class SpscRingBuffer {
         }
 
         buffer[currentWriteNumber & bufferIndexBitMask] = value;
-        writeNumber.store(currentWriteNumber + 1, std::memory_order_release);
+        writeCount.store(currentWriteNumber + 1, std::memory_order_release);
         return true;
     }
 
     bool push(T&& value) {
-        std::size_t currentWriteNumber = writeNumber.load(std::memory_order_relaxed);
-        std::size_t currentReadNumber = readNumber.load(std::memory_order_acquire);
+        std::size_t currentWriteNumber = writeCount.load(std::memory_order_relaxed);
+        std::size_t currentReadNumber = readCount.load(std::memory_order_acquire);
 
         // Check if buffer is full
         if (currentWriteNumber - currentReadNumber == bufferSize) {
             return false;
         }
 
-        buffer[currentWriteNumber & bufferIndexBitMask] = value;
-        writeNumber.store(currentWriteNumber + 1, std::memory_order_release);
+        buffer[currentWriteNumber & bufferIndexBitMask] = std::move(value);
+        writeCount.store(currentWriteNumber + 1, std::memory_order_release);
         return true;
     }
 
     std::optional<T> pop() {
-        std::size_t currentWriteNumber = writeNumber.load(std::memory_order_acquire);
-        std::size_t currentReadNumber = readNumber.load(std::memory_order_relaxed);
+        std::size_t currentWriteNumber = writeCount.load(std::memory_order_acquire);
+        std::size_t currentReadNumber = readCount.load(std::memory_order_relaxed);
 
         // Check if buffer is empty
         if (currentWriteNumber == currentReadNumber) {
             return std::nullopt;
         }
 
-        std::optional<T> result =
-            buffer[currentReadNumber & bufferIndexBitMask];  // Need to fix this to not make a copy
-        readNumber.store(currentReadNumber + 1, std::memory_order_release);
+        std::optional<T> result = std::move(buffer[currentReadNumber & bufferIndexBitMask]);
+        readCount.store(currentReadNumber + 1, std::memory_order_release);
         return result;
     }
 };
 
 int main() {
-    // Create an array of 1,000,000 random numbers to stream to the buffer
+    // Create an array of random numbers to stream to the buffer
     const std::size_t size{2 << 10};
     const int minVal = 1;
     const int maxVal = 1'000;
@@ -86,7 +87,7 @@ int main() {
     std::array<int, size> outputArray;
 
     // Construct the buffer
-    SpscRingBuffer<int, (size >> 2)> buffer;
+    SpscRingBuffer<int, (size >> 10)> buffer;
 
     {
         // Producer thread
