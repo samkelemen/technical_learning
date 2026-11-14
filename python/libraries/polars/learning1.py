@@ -70,7 +70,7 @@ has_max_sentinal_values: bool = (
 event_hour_col = "event_hour"
 ts_event_col = "ts_event"
 num_messages_col = "num_messages"
-df_events_per_hour = (
+df_messages_per_hour = (
     lf.with_columns(
         pl.col(ts_event_col).dt.truncate("1h").alias(event_hour_col),
     )
@@ -78,5 +78,55 @@ df_events_per_hour = (
     .agg(pl.len().alias(num_messages_col))
 ).collect()
 
-chart = df_events_per_hour.plot.line(x=event_hour_col, y=num_messages_col)
+chart_messages_per_hour = df_messages_per_hour.plot.line(x=event_hour_col, y=num_messages_col)
+chart_messages_per_hour.save("messages_per_hour.png", scale_factor=2)
+
+# 3.2 see how many events there are per hour
+day_hour_col = "day_hour"
+flags_col = "flags"
+ts_event_col = "ts_event"
+num_events_col = "num events"
+
+df_events_per_hour = (
+    lf.filter(pl.col(flags_col) & 0x80 != 0)
+    .with_columns(
+        pl.col(ts_event_col).dt.truncate("1h").alias(day_hour_col),
+    )
+    .group_by(day_hour_col)
+    .agg(pl.len().alias(num_events_col))
+    .collect()
+)
+
+chart_events_per_hour = df_events_per_hour.plot.line(x=day_hour_col, y=num_events_col)
+chart_events_per_hour.save("events_per_hour.png", scale_factor=2)
+
+# 3.3 get percent of messages with last event flag
+flags_col = "flags"
+num_messages_with_last_event_flag = lf.filter(pl.col(flags_col) & 0x80 != 0).select(pl.len()).collect().item()
+num_messages = lf.select(pl.len()).collect().item()
+
+percent_messages_with_last_event_flag = num_messages_with_last_event_flag / num_messages * 100
+print(f"{percent_messages_with_last_event_flag=}%")
+
+# 3.4 do the same with mbo data
+calendar = fcals.get_market_calendar(fcals.CmeProductGroup.INTEREST_RATES)
+lf = ec.get_data(
+    data_type=ec.MarketDataType.MBO,
+    start_datetime_utc=datetime(2026, 10, 14),
+    end_datetime_utc=datetime(2026, 10, 18),
+    data_provider=ec.DataProvider.DATABENTO,
+    market_calendar=calendar,
+    symbols=[
+        "ZBZ6",
+    ],
+    trading_session=ec.TradingSession.REGULAR_SESSION,
+)
+flags_col = "flags"
+num_messages_with_last_event_flag = lf.filter(pl.col(flags_col) & 0x80 != 0).select(pl.len()).collect().item()
+num_messages = lf.select(pl.len()).collect().item()
+
+percent_messages_with_last_event_flag = num_messages_with_last_event_flag / num_messages * 100
+print(f"{percent_messages_with_last_event_flag=}%")
+
+
 # %%
